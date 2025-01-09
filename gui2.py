@@ -42,7 +42,8 @@ def index():
                 file.save(file_path)
                 logger.info(f"File saved: {file_path}")
 
-                emotions = DeepFace.analyze(img_path=file_path, actions=['emotion'])
+                # emotions = DeepFace.analyze(img_path=file_path, actions=['emotion'])
+                emotions = DeepFace.stream("Test")
                 confidence = int(emotions[0]['face_confidence'] * 100)
 
                 # Plot emociones
