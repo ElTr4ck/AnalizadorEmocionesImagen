@@ -2,6 +2,7 @@ import cv2
 from flask import Flask, render_template, Response, jsonify
 from deepface import DeepFace
 import threading
+import numpy as np
 
 app = Flask(__name__)
 
@@ -26,6 +27,12 @@ def analyze_frame(frame):
         
         with lock:
             current_emotions = analysis[0]['emotion']
+            for keys in current_emotions:
+                a = current_emotions[keys]
+                b = np.array([a], dtype=np.float32)
+                c = b.astype(np.float64)
+                d = c[0]
+                current_emotions[keys] = d
     except Exception as e:
         print(f"Error analyzing frame: {e}")
 
