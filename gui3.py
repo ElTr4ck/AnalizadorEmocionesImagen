@@ -3,6 +3,7 @@ from flask import Flask, render_template, Response, jsonify
 from deepface import DeepFace
 import threading
 import numpy as np
+import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
@@ -23,16 +24,33 @@ def analyze_frame(frame):
     try:
         # Convertir el frame de BGR a RGB (DeepFace usa RGB)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        analysis = DeepFace.analyze(img_path=rgb_frame, actions=['emotion'], enforce_detection=False)
+
+        detected_face = DeepFace.extract_faces(img_path=rgb_frame, detector_backend='opencv')
+        numberOfFaces = len(detected_face)
+
+        for face_obj in detected_face:
+            img = face_obj['face']
+            img = img * 255
+            cv2.imwrite("CurrentGraph/face.jpg", img)
+            imgrdt = plt.imread("CurrentGraph/face.jpg")
+
+            analysis = DeepFace.analyze(img_path=imgrdt, actions=['emotion'], enforce_detection=False)
+
+            with lock:
+                temp_current_emotions = analysis[0]['emotion']
+
+                # Convertir el np.float32 a np.float64
+                for keys in temp_current_emotions:
+                    current_emotions[keys] = 0 # Resetear current_emotions
+                    a = temp_current_emotions[keys]
+                    b = np.array([a], dtype=np.float32)
+                    c = b.astype(np.float64)
+                    d = c[0]
+                    current_emotions[keys] += d # Sumar los valores                    
         
-        with lock:
-            current_emotions = analysis[0]['emotion']
-            for keys in current_emotions:
-                a = current_emotions[keys]
-                b = np.array([a], dtype=np.float32)
-                c = b.astype(np.float64)
-                d = c[0]
-                current_emotions[keys] = d
+        for keys in current_emotions:
+            current_emotions[keys] /= numberOfFaces # Obtiene promedio de emocion con respecto al num de rostros
+
     except Exception as e:
         print(f"Error analyzing frame: {e}")
 
