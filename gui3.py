@@ -1,101 +1,81 @@
 import cv2
-from flask import Flask, render_template, Response, jsonify
+from flask import Flask, render_template, Response, jsonify, request
 from deepface import DeepFace
 import threading
 import numpy as np
-import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
 # Variables globales
 current_emotions = {}
+smoothed_emotions = {}
 lock = threading.Lock()
 
-""" Function: analyze_frame
-    Analiza un frame de video para analizar emociones usando la libreria de DeepFace
-    Args:
-        frame (numpy.ndarray): El frame de video a analizar, convertido en formato RGB
-    Raises:
-        Exception: Si hay un error durante el analisis del frame
-"""
+# Factor de suavización para exponencial moving average (entre 0 y 1)
+SMOOTHING_FACTOR = 0.3
+
+
 def analyze_frame(frame):
-    
-    global current_emotions
+    """
+    Analiza un frame para detectar emociones usando DeepFace y aplica suavización
+    """
+    global current_emotions, smoothed_emotions
     try:
-        # Convertir el frame de BGR a RGB (DeepFace usa RGB)
+        # Convertir el frame a formato RGB para DeepFace
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        detected_face = DeepFace.extract_faces(img_path=rgb_frame, detector_backend='opencv')
-        numberOfFaces = len(detected_face)
+        # Detectar y analizar emociones
+        analysis = DeepFace.analyze(img_path=rgb_frame, actions=['emotion'], enforce_detection=False)
 
-        for face_obj in detected_face:
-            img = face_obj['face']
-            img = img * 255
-            cv2.imwrite("CurrentGraph/face.jpg", img)
-            imgrdt = plt.imread("CurrentGraph/face.jpg")
+        # Procesar las emociones detectadas
+        detected_emotions = analysis[0]['emotion']
+        with lock:
+            for emotion, value in detected_emotions.items():
+                if emotion not in smoothed_emotions:
+                    smoothed_emotions[emotion] = value
+                else:
+                    # Aplicar suavización exponencial
+                    smoothed_emotions[emotion] = (
+                        SMOOTHING_FACTOR * value + (1 - SMOOTHING_FACTOR) * smoothed_emotions[emotion]
+                    )
 
-            analysis = DeepFace.analyze(img_path=imgrdt, actions=['emotion'], enforce_detection=False)
-
-            with lock:
-                temp_current_emotions = analysis[0]['emotion']
-
-                # Convertir el np.float32 a np.float64
-                for keys in temp_current_emotions:
-                    current_emotions[keys] = 0 # Resetear current_emotions
-                    a = temp_current_emotions[keys]
-                    b = np.array([a], dtype=np.float32)
-                    c = b.astype(np.float64)
-                    d = c[0]
-                    current_emotions[keys] += d # Sumar los valores                    
-        
-        for keys in current_emotions:
-            current_emotions[keys] /= numberOfFaces # Obtiene promedio de emocion con respecto al num de rostros
+            # Actualizar las emociones actuales con las suavizadas
+            current_emotions = smoothed_emotions.copy()
 
     except Exception as e:
         print(f"Error analyzing frame: {e}")
 
 
-"""
-    Function: generate_frames
-    Captura frames de video desdela cámara predeterminada, analiza cada frma ene un hilo separado,
-    y codifica los frames para su transimión en formato JPEG.
-    Yields:
-        bytes: Frame de video codificado en bits, con encabezados pertinentes para transmisión.
-"""
-def generate_frames():
-    
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    while True:
-        success, frame = cap.read()
-        if not success:
-            print("Error reading frame")
-            break
-        
-        # Enviar el frame para análisis en un hilo separado
-        threading.Thread(target=analyze_frame, args=(frame,)).start()
-        
-        # Codificar el frame para transmisión
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        
-        yield (b'--frame\r\n'
-                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
-    cap.release()
-
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/emotions')
 def emotions():
-    global current_emotions
     with lock:
         return jsonify(current_emotions)
 
+
+@app.route('/process_frame', methods=['POST'])
+def process_frame():
+    """
+    Procesa un frame enviado por el cliente para analizar emociones
+    """
+    try:
+        file = request.files['frame']
+        img_array = np.frombuffer(file.read(), np.uint8)
+        frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+        # Analizar el frame recibido
+        analyze_frame(frame)
+
+        # Responder con las emociones detectadas
+        with lock:
+            return jsonify(current_emotions)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False)
