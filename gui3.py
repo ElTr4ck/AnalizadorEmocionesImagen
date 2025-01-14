@@ -11,7 +11,7 @@ import os
 load_dotenv()
 app = Flask(__name__)
 CORS(app) # Habilitar CORS para permitir peticiones desde cualquier origen
-app.comfig['DEBUG'] = os.environ.get('FLASK_DEBUG')
+app.config['DEBUG'] = os.environ.get('FLASK_DEBUG')
 
 # Variables globales
 current_emotions = {}
