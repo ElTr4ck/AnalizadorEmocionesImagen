@@ -3,8 +3,15 @@ from flask import Flask, render_template, Response, jsonify, request
 from deepface import DeepFace
 import threading
 import numpy as np
+from dotenv import load_dotenv
+from flask_cors import CORS
+import os
 
+# Cargar variables de entorno desde el archivo .env
+load_dotenv()
 app = Flask(__name__)
+CORS(app) # Habilitar CORS para permitir peticiones desde cualquier origen
+app.comfig['DEBUG'] = os.environ.get('FLASK_DEBUG')
 
 # Variables globales
 current_emotions = {}
@@ -78,4 +85,4 @@ def process_frame():
 
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run()
